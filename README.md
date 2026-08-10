@@ -34,6 +34,9 @@ F12 in game. Everything takes effect immediately, no restart.
 |---|---|---|
 | Enable Mod | on | master toggle |
 | Ring Scale | 1.0 | size multiplier. 1.0 matches live, which is small |
+| Ring Thickness | 0.43 | band width as a fraction of the ring's radius. higher is thicker, 1.0 is a solid disc |
+| Ring Opacity | 1.0 | maximum opacity the ring reaches when fully lit |
+| Ring Color | white | tint applied to the ring |
 | Converge Distance | 1.5 m | how close before the whole ring lights up instead of pointing. you have to be looking at it too |
 | Scan Interval | 0.25 s | how often it looks for items. direction still updates every frame |
 
