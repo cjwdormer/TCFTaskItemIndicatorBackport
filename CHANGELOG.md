@@ -7,7 +7,7 @@ All notable changes to Task Item Indicator are documented here. Format follows [
 - Mark and place-beacon objectives now indicate too, pointing at the zone trigger in the map instead of a loot pickup. Logs the PlaceItemTrigger zone IDs it finds on first use so the zoneId match can be confirmed in raid - remove that log once verified.
 
 ### Changed
-- Plugin GUID changed from `com.vultify.taskitemindicator` to `com.thecrimsonfuckr.taskitemindicator`, matching the naming convention used on other TheCrimsonFuckr mods. BepInEx treats this as a new plugin, so anyone updating from a pre-change build should remove the old DLL rather than overwrite it.
+- Plugin GUID changed from `com.vultify.taskitemindicator` to `com.thecrimsonfuckr.taskitemindicator`, matching the naming convention used on my other TCF mods mods. 
 
 ## [1.0.0] - 2026-08-06
 ### Added
