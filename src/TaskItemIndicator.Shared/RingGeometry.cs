@@ -21,9 +21,8 @@ namespace TaskItemIndicator.Shared
         public static readonly float[] SegmentCentres = { 45f, 135f, 225f, 315f };
         public const float SegmentHalfWidth = 35f;
 
-        // matches the "Ring Thickness" config default of 3/7 (band width / outer radius) - the plugin
-        // now derives its own inner radius fraction from that slider, this constant just documents
-        // where the default came from
+        // Original hand-tuned band width (inner/outer radius). Kept for reference only - the plugin's
+        // Ring Thickness config now supplies its own ratio instead of reading this constant.
         public const float InnerRadiusFraction = 4f / 7f;
 
         public const float EndTaper = 0.72f;
