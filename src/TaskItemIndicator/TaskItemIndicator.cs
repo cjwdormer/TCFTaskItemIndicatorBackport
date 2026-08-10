@@ -46,25 +46,38 @@ namespace TaskItemIndicator
         private ConfigEntry<Color> _ringColor;
         private ConfigEntry<float> _convergeDistance;
 
+        // Quest items/zones currently worth pointing at, rebuilt from the player's active quests every
+        // QuestRefreshInterval.
         private readonly HashSet<string> _wanted = new HashSet<string>();
         private readonly HashSet<string> _wantedZones = new HashSet<string>();
+
+        // World position of every PlaceItemTrigger in the scene, keyed by zoneId. See
+        // RefreshZonePositions for why the scan/lock-in fields below exist.
         private readonly Dictionary<string, Vector3> _zonePositions = new Dictionary<string, Vector3>();
         private bool _zonesLogged;
         private bool _zonesStable;
         private int _lastZoneScanCount = -1;
+
+        // Ring rendering state.
         private readonly float[] _alpha = new float[4];
         private Image[] _arcs;
         private Canvas _canvas;
         private ActionPanel _actionPanel;
+
+        // Config values the ring was last built with - EnsureRing rebuilds when any of these drift from
+        // the live config.
         private int _builtForHeight;
         private float _builtForScale;
         private float _builtForThickness;
 
         private float _nextScan;
         private float _nextQuestRefresh;
+
+        // Nearest task item/zone found by the most recent scan.
         private bool _hasTarget;
         private Vector3 _targetPosition;
         private float _targetDistance;
+
         private bool _loggedSenseSpriteState;
         private bool _loggedFirstTarget;
 
@@ -150,6 +163,9 @@ namespace TaskItemIndicator
 
             EnsureRing();
 
+            // Proximity scans and quest refreshes are throttled separately - quests only need
+            // rechecking every couple of seconds, everything else follows the scan interval. Bearing and
+            // fade still update every frame in UpdateArcs so the ring doesn't feel choppy.
             if (Time.time >= _nextScan)
             {
                 _nextScan = Time.time + _scanInterval.Value;
@@ -169,14 +185,16 @@ namespace TaskItemIndicator
         }
 
         /// <summary>
-        /// Same test GameWorld.ManageQuestLoot runs to decide whether to spawn a quest item for you,
-        /// rebuilt here because that one only runs once at raid start.
+        /// Rebuilds <see cref="_wanted"/> and <see cref="_wantedZones"/> from the player's active
+        /// quests. Mirrors the check GameWorld.ManageQuestLoot uses to decide whether to spawn a quest
+        /// item, rebuilt here since that one only runs once at raid start and quests can complete
+        /// mid-raid.
         ///
-        /// SPT 4.0.13's client renamed the old QuestController/Quest types (obfuscated names, reshuffle
-        /// each client build): Player.QuestController is now Player.AbstractQuestControllerClass
-        /// (type AbstractQuestControllerClass), and Quest is now QuestClass. Everything this method
-        /// touches on them - Quests, QuestStatus, GetConditions, CompletedConditions, ProgressCheckers -
-        /// kept the same shape, just under the new names.
+        /// Written against SPT 4.0.13's client, where QuestController/Quest were renamed (obfuscated
+        /// names reshuffle every client build): Player.QuestController is now
+        /// AbstractQuestControllerClass, and Quest is now QuestClass. Everything used here - Quests,
+        /// QuestStatus, GetConditions, CompletedConditions, ProgressCheckers - kept the same shape under
+        /// the new names.
         /// </summary>
         private void RefreshWanted(Player player)
         {
@@ -209,10 +227,9 @@ namespace TaskItemIndicator
                     }
                 }
 
-                // Mark and place-beacon objectives don't spawn a pickup - the target is a fixed zone
-                // in the map (a PlaceItemTrigger, matched below by zoneId), and the item you plant
-                // there is already in your inventory. Both condition types share the same zoneId/target
-                // shape via ConditionZone.
+                // Mark/place-beacon objectives don't spawn a pickup - the target is a fixed map zone (a
+                // PlaceItemTrigger, matched below by zoneId), and the item you place there is already in
+                // your inventory. Both condition types share the same zoneId/target shape via ConditionZone.
                 foreach (ConditionLeaveItemAtLocation condition in quest.GetConditions<ConditionLeaveItemAtLocation>(EQuestStatus.AvailableForFinish))
                 {
                     if (IsOutstanding(quest, condition))
@@ -242,13 +259,17 @@ namespace TaskItemIndicator
             return !(quest.ProgressCheckers.TryGetValue(condition, out ConditionProgressChecker checker) && checker.Test());
         }
 
+        /// <summary>
+        /// Finds the nearest wanted loot item or zone within <paramref name="distance"/> of
+        /// <paramref name="from"/> and stores it in <see cref="_hasTarget"/>/<see cref="_targetPosition"/>.
+        /// </summary>
         private void FindNearestTaskItem(GameWorld gameWorld, Vector3 from, float distance)
         {
             _hasTarget = false;
             float best = distance * distance;
 
             // IKillable was renamed IKillableLootItem in SPT 4.0.13's client; LootItem itself (the cast
-            // target below) kept its name
+            // target below) kept its name.
             List<IKillableLootItem> lootList = gameWorld.LootList;
             if (lootList != null && _wanted.Count > 0)
             {
@@ -260,8 +281,8 @@ namespace TaskItemIndicator
                         continue;
                     }
 
-                    // QuestItem is the "shows in the task items tab" flag - ordinary loot a quest happens
-                    // to ask for is deliberately not indicated
+                    // QuestItem flags "shows in the task items tab" - ordinary loot a quest happens to
+                    // ask for is deliberately not indicated.
                     Item item = loot.Item;
                     if (item == null || !item.QuestItem || !_wanted.Contains(item.StringTemplateId))
                     {
@@ -283,7 +304,8 @@ namespace TaskItemIndicator
                 }
             }
 
-            // separates "detection never fired" from "detected it and the ring still didn't draw"
+            // Logged once so a report of "ring never shows" can be told apart from "target was found but
+            // the ring itself didn't draw" - the first is a detection bug, the second is a render bug.
             if (_hasTarget && !_loggedFirstTarget)
             {
                 _loggedFirstTarget = true;
@@ -291,6 +313,7 @@ namespace TaskItemIndicator
             }
         }
 
+        /// <summary>Keeps whichever of the current best and this candidate is closer to <paramref name="from"/>.</summary>
         private void ConsiderTarget(Vector3 position, Vector3 from, ref float best)
         {
             float sqr = (position - from).sqrMagnitude;
@@ -304,19 +327,14 @@ namespace TaskItemIndicator
         }
 
         /// <summary>
-        /// PlaceItemTrigger is the zone object dropped in the scene for mark/place-beacon objectives;
-        /// its Id matches a condition's zoneId. This used to scan once and cache forever, on the
-        /// assumption that the raid scene is fully populated by the time MainPlayer exists - but the
-        /// log shows that scan firing before HostGameController even reports the raid started, and
-        /// before content mods like WTT's zone data (fetched via /wttcommonlib/zones/get) finish
-        /// spawning their own PlaceItemTriggers. A zone caught mid-spawn just silently never gets
-        /// found.
+        /// Rebuilds <see cref="_zonePositions"/> from every PlaceItemTrigger in the scene - the object
+        /// dropped in for mark/place-beacon objectives, whose Id matches a condition's zoneId.
         ///
-        /// FindObjectsOfType is a full scene scan, so re-running it every 2s for the whole raid (as a
-        /// first fix did) hitches on a big map like Woods. It's only actually needed for the handful of
-        /// ticks it takes late-spawning zones to appear, so this keeps rescanning until the trigger
-        /// count matches the previous scan - two ticks in a row with no change means the scene's
-        /// settled - then stops for good.
+        /// Some triggers (e.g. content-mod zones) spawn in a few seconds after the raid starts, so a
+        /// single scan right at raid start can miss them. FindObjectsOfType is a full scene scan though,
+        /// so re-running it for the whole raid would hitch on a big map. This rescans each quest-refresh
+        /// tick until the trigger count matches the previous scan - two ticks with no change means the
+        /// scene's settled - then stops for good.
         /// </summary>
         private void RefreshZonePositions()
         {
@@ -348,10 +366,14 @@ namespace TaskItemIndicator
             }
         }
 
+        /// <summary>
+        /// Recomputes each arc's target alpha for the current frame and eases the rendered
+        /// alpha/color toward it.
+        /// </summary>
         private void UpdateArcs(Player player)
         {
-            // short-circuits the same way the old inline version did: only ask whether a prompt is up
-            // if there's actually a target to hide behind it
+            // Only bother checking for an interaction prompt if there's actually a target - the check
+            // itself has a cost, and there's nothing to hide the ring behind otherwise.
             bool interactionPromptVisible = _hasTarget && InteractionPromptVisible();
 
             float bearing = 0f;
@@ -393,6 +415,7 @@ namespace TaskItemIndicator
             }
         }
 
+        /// <summary>Finds and caches the scene's ActionPanel (the interaction-prompt UI).</summary>
         private ActionPanel ResolveActionPanel()
         {
             if (_actionPanel == null)
@@ -403,13 +426,11 @@ namespace TaskItemIndicator
             return _actionPanel;
         }
 
-        // ActionPanel._interactionButtonsContainer and ._pointer are genuinely private fields on the
-        // game's own type, not just an obfuscated-looking name - a private member of a type imported
-        // from another assembly isn't part of the compiler's member lookup at all (that's why this was
-        // CS1061 "does not contain a definition", not CS0122 "inaccessible", when built directly
-        // against SPT 4.0.13's client). Reflection sidesteps the compiler's visibility check the same
-        // way Harmony patches do; the CLR itself has no problem handing back a private field's value.
-        // Cached once since Update() runs every frame and reflection lookup isn't free.
+        // ActionPanel's interaction-buttons container and pointer fields are genuinely private, not just
+        // obfuscated names - a private member from another assembly isn't visible to the compiler at
+        // all, so accessing them directly fails to build rather than just refusing at runtime.
+        // Reflection bypasses that compile-time check the same way Harmony patches do. Cached once -
+        // Update() runs every frame and reflection lookups aren't free.
         private static readonly FieldInfo InteractionButtonsContainerField =
             typeof(ActionPanel).GetField("_interactionButtonsContainer", BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -442,6 +463,10 @@ namespace TaskItemIndicator
             return camera == null ? player.Position : camera.position;
         }
 
+        /// <summary>
+        /// (Re)builds the ring's Canvas and arc textures if the screen size, scale, or thickness has
+        /// changed since the last build.
+        /// </summary>
         private void EnsureRing()
         {
             bool sizeChanged = _builtForHeight != Screen.height
@@ -466,9 +491,9 @@ namespace TaskItemIndicator
                 RingGeometry.ReferenceOuterRadius * (Screen.height / RingGeometry.ReferenceScreenHeight) * _ringScale.Value));
             int size = outer * 2;
 
-            // "thickness" is the band width as a fraction of the outer radius (bigger = thicker), which
-            // reads more intuitively as a slider than the inner/outer radius ratio BuildArcTexture
-            // actually needs - so it's inverted here rather than exposing InnerRadiusFraction directly
+            // Ring Thickness is band width as a fraction of the outer radius (bigger = thicker) - more
+            // intuitive as a slider than the inner/outer radius ratio BuildArcTexture needs, so it's
+            // inverted here.
             float innerRadiusFraction = Mathf.Clamp01(1f - _builtForThickness);
 
             GameObject root = new GameObject("TaskItemIndicator");
@@ -573,6 +598,7 @@ namespace TaskItemIndicator
                 + ", Sense: " + (pointer.SenseSprite == null ? "null" : pointer.SenseSprite.name));
         }
 
+        /// <summary>Tears down ring state and clears cached scan results when leaving a raid.</summary>
         private void LeaveRaid()
         {
             if (_canvas != null)
