@@ -17,6 +17,7 @@ All notable changes to Task Item Indicator are documented here. Format follows [
 
 ### Fixed
 - Mark/place-beacon zones that spawn into the scene a few seconds after raid start (e.g. from content mods) could be silently missed - the trigger scan now keeps rescanning until the scene settles, instead of only checking once right at raid start
+- Ring Color crashed config loading on startup (BepInEx has no built-in support for that setting's type), silently taking the ring and all task-item scanning down with it every raid - replaced with separate Ring Color R/G/B sliders
 
 ### Changed
 - Plugin GUID changed from `com.vultify.taskitemindicator` to `com.thecrimsonfuckr.taskitemindicator`, matching the naming convention used on my other TCF mods. Existing config will reset under the new GUID.
