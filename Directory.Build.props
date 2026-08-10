@@ -1,0 +1,11 @@
+<Project>
+
+  <!--
+    Stub kept at the repo root on purpose: MSBuild finds Directory.Build.props by walking up from each
+    project's own directory, and a copy sitting in build/ (a sibling of src/, not an ancestor) would
+    never be found that way. This stub is the one file that has to stay here; the real settings live in
+    build/Directory.Build.props with the rest of the build/deploy tooling.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)build\Directory.Build.props" />
+
+</Project>

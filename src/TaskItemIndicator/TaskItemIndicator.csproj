@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>TaskItemIndicator</AssemblyName>
+    <RootNamespace>TaskItemIndicator</RootNamespace>
+    <Version>1.0.0</Version>
+    <LangVersion>latest</LangVersion>
+    <OutputPath>bin\$(Configuration)\$(AssemblyName)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!--
+    SptInstallDir comes from build/Directory.Build.props (env var SPT_INSTALL_DIR, or a gitignored
+    build/Directory.Build.local.props - see build/Directory.Build.local.props.example). Fail fast with
+    a clear message rather than a confusing "file not found" from the compiler.
+  -->
+  <Target Name="CheckSptInstallDir" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(SptInstallDir)' == ''"
+           Text="SptInstallDir is not set. Copy build/Directory.Build.local.props.example to build/Directory.Build.local.props and set it to your SPT install folder (or set the SPT_INSTALL_DIR environment variable)." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(SptInstallDir)\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- GameWorld, Player, LootItem, the quest types, and EFT.UI.ActionPanel -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- ActionPanel's base chain bottoms out in Odin's SerializedMonoBehaviour, so naming the type
+         needs this even though the mod never touches Odin -->
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\Sirenix.Serialization.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Comfort.Common.Singleton<GameWorld> -->
+    <Reference Include="Comfort">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- the ring is drawn on our own canvas: Canvas from UIModule, Image from UI -->
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(SptInstallDir)\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TaskItemIndicator.Shared\TaskItemIndicator.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

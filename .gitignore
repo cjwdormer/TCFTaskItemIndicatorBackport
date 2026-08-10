@@ -1,0 +1,13 @@
+bin/
+obj/
+build/
+Tests/
+.vs/
+.idea/
+dist/
+*.user
+*.suo
+*.ps1
+*.pdb
+build.bat
+*_decompiled.cs
