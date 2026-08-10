@@ -47,7 +47,7 @@ namespace TaskItemIndicator
         private readonly HashSet<string> _wanted = new HashSet<string>();
         private readonly HashSet<string> _wantedZones = new HashSet<string>();
         private readonly Dictionary<string, Vector3> _zonePositions = new Dictionary<string, Vector3>();
-        private bool _zonesCached;
+        private bool _zonesLogged;
         private readonly float[] _alpha = new float[4];
         private Image[] _arcs;
         private Canvas _canvas;
@@ -131,6 +131,7 @@ namespace TaskItemIndicator
                 {
                     _nextQuestRefresh = Time.time + QuestRefreshInterval;
                     RefreshWanted(player);
+                    RefreshZonePositions();
                     LogSenseSpriteStateOnce();
                 }
 
@@ -246,8 +247,6 @@ namespace TaskItemIndicator
 
             if (_wantedZones.Count > 0)
             {
-                EnsureZonePositionsCached();
-
                 foreach (string zoneId in _wantedZones)
                 {
                     if (_zonePositions.TryGetValue(zoneId, out Vector3 position))
@@ -279,18 +278,17 @@ namespace TaskItemIndicator
 
         /// <summary>
         /// PlaceItemTrigger is the zone object dropped in the scene for mark/place-beacon objectives;
-        /// its Id matches a condition's zoneId. Triggers don't move once the raid's loaded, so this
-        /// only needs to run once - logged with what it found since the zoneId match is unverified
-        /// against a live raid.
+        /// its Id matches a condition's zoneId. This used to scan once and cache forever, on the
+        /// assumption that the raid scene is fully populated by the time MainPlayer exists - but the
+        /// log shows that scan firing before HostGameController even reports the raid started, and
+        /// before content mods like WTT's zone data (fetched via /wttcommonlib/zones/get) finish
+        /// spawning their own PlaceItemTriggers. A zone caught mid-spawn just silently never gets
+        /// found. So this now rebuilds every quest-refresh tick (same 2s cadence as RefreshWanted)
+        /// instead - cheap for a few dozen static objects, and self-heals once the scene settles.
         /// </summary>
-        private void EnsureZonePositionsCached()
+        private void RefreshZonePositions()
         {
-            if (_zonesCached)
-            {
-                return;
-            }
-
-            _zonesCached = true;
+            _zonePositions.Clear();
 
             PlaceItemTrigger[] triggers = FindObjectsOfType<PlaceItemTrigger>();
             foreach (PlaceItemTrigger trigger in triggers)
@@ -298,8 +296,12 @@ namespace TaskItemIndicator
                 _zonePositions[trigger.Id] = trigger.transform.position;
             }
 
-            Logger.LogInfo("Task Item Indicator: found " + triggers.Length + " PlaceItemTrigger zone(s) - "
-                + string.Join(", ", _zonePositions.Keys) + ". Wanted zone(s): " + string.Join(", ", _wantedZones));
+            if (!_zonesLogged)
+            {
+                _zonesLogged = true;
+                Logger.LogInfo("Task Item Indicator: found " + triggers.Length + " PlaceItemTrigger zone(s) - "
+                    + string.Join(", ", _zonePositions.Keys) + ". Wanted zone(s): " + string.Join(", ", _wantedZones));
+            }
         }
 
         private void UpdateArcs(Player player)
@@ -536,7 +538,7 @@ namespace TaskItemIndicator
             _wanted.Clear();
             _wantedZones.Clear();
             _zonePositions.Clear();
-            _zonesCached = false;
+            _zonesLogged = false;
 
             for (int i = 0; i < 4; i++)
             {
