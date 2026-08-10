@@ -20,7 +20,12 @@ namespace TaskItemIndicator.Shared
         // reveal clip, three frames across two scenes
         public static readonly float[] SegmentCentres = { 45f, 135f, 225f, 315f };
         public const float SegmentHalfWidth = 35f;
+
+        // matches the "Ring Thickness" config default of 3/7 (band width / outer radius) - the plugin
+        // now derives its own inner radius fraction from that slider, this constant just documents
+        // where the default came from
         public const float InnerRadiusFraction = 4f / 7f;
+
         public const float EndTaper = 0.72f;
         public const float ReferenceOuterRadius = 7f;
         public const float ReferenceScreenHeight = 720f;
