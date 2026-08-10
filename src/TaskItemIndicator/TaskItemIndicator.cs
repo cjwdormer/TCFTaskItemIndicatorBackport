@@ -43,7 +43,9 @@ namespace TaskItemIndicator
         private ConfigEntry<float> _ringScale;
         private ConfigEntry<float> _ringThickness;
         private ConfigEntry<float> _ringOpacity;
-        private ConfigEntry<Color> _ringColor;
+        private ConfigEntry<float> _ringColorR;
+        private ConfigEntry<float> _ringColorG;
+        private ConfigEntry<float> _ringColorB;
         private ConfigEntry<float> _convergeDistance;
 
         // Quest items/zones currently worth pointing at, rebuilt from the player's active quests every
@@ -113,11 +115,29 @@ namespace TaskItemIndicator
                     "Maximum opacity the ring reaches when fully lit",
                     new AcceptableValueRange<float>(0.1f, 1f)));
 
-            _ringColor = Config.Bind(
+            _ringColorR = Config.Bind(
                 "2. Indicator",
-                "Ring Color",
-                Color.white,
-                "Tint applied to the ring");
+                "Ring Color R",
+                1f,
+                new ConfigDescription(
+                    "Red component of the ring's tint",
+                    new AcceptableValueRange<float>(0f, 1f)));
+
+            _ringColorG = Config.Bind(
+                "2. Indicator",
+                "Ring Color G",
+                1f,
+                new ConfigDescription(
+                    "Green component of the ring's tint",
+                    new AcceptableValueRange<float>(0f, 1f)));
+
+            _ringColorB = Config.Bind(
+                "2. Indicator",
+                "Ring Color B",
+                1f,
+                new ConfigDescription(
+                    "Blue component of the ring's tint",
+                    new AcceptableValueRange<float>(0f, 1f)));
 
             _convergeDistance = Config.Bind(
                 "2. Indicator",
@@ -403,7 +423,7 @@ namespace TaskItemIndicator
                 directionSharpness: DirectionSharpness,
                 fadeInFraction: FadeInFraction);
 
-            Color tint = _ringColor.Value;
+            Color tint = new Color(_ringColorR.Value, _ringColorG.Value, _ringColorB.Value);
             float step = Time.deltaTime * FadeSpeed;
             for (int i = 0; i < 4; i++)
             {
@@ -502,7 +522,7 @@ namespace TaskItemIndicator
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 50;
 
-            Color tint = _ringColor.Value;
+            Color tint = new Color(_ringColorR.Value, _ringColorG.Value, _ringColorB.Value);
             _arcs = new Image[4];
             for (int i = 0; i < 4; i++)
             {
