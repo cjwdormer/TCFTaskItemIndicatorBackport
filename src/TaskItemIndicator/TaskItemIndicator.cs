@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Configuration;
@@ -82,6 +83,7 @@ namespace TaskItemIndicator
 
         private bool _loggedSenseSpriteState;
         private bool _loggedFirstTarget;
+        private bool _loggedTickException;
 
         private void Awake()
         {
@@ -160,13 +162,20 @@ namespace TaskItemIndicator
 
         private void Update()
         {
-            // anything thrown here repeats every frame, so it never gets out
+            // anything thrown here repeats every frame, so it never gets out - logged once (not every
+            // frame) so a silent failure like the Ring Color crash is visible in the log instead of
+            // just "the ring never showed up"
             try
             {
                 Tick();
             }
-            catch
+            catch (Exception ex)
             {
+                if (!_loggedTickException)
+                {
+                    _loggedTickException = true;
+                    Logger.LogError("Tick() threw, ring/scanning disabled for the rest of the raid: " + ex);
+                }
             }
         }
 
@@ -382,7 +391,8 @@ namespace TaskItemIndicator
             {
                 _zonesLogged = true;
                 Logger.LogInfo("Task Item Indicator: found " + triggers.Length + " PlaceItemTrigger zone(s) - "
-                    + string.Join(", ", _zonePositions.Keys) + ". Wanted zone(s): " + string.Join(", ", _wantedZones));
+                    + string.Join(", ", _zonePositions.Keys) + ". Wanted zone(s): " + string.Join(", ", _wantedZones)
+                    + ". Wanted item(s): " + string.Join(", ", _wanted));
             }
         }
 
@@ -633,6 +643,7 @@ namespace TaskItemIndicator
             _hasTarget = false;
             _loggedSenseSpriteState = false;
             _loggedFirstTarget = false;
+            _loggedTickException = false;
             _nextQuestRefresh = 0f;
             _wanted.Clear();
             _wantedZones.Clear();
