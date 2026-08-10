@@ -39,6 +39,11 @@ namespace TaskItemIndicator
         private const float FadeInFraction = 0.35f;
         private const float FadeSpeed = 7f;
 
+        // Zone rescanning: throttled separately from QuestRefreshInterval since FindObjectsOfType is a
+        // full scene scan - see RefreshZonePositions.
+        private const float ZoneRescanInterval = 5f;
+        private const float ZoneScanTimeout = 90f;
+
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _scanInterval;
         private ConfigEntry<float> _ringScale;
@@ -59,7 +64,8 @@ namespace TaskItemIndicator
         private readonly Dictionary<string, Vector3> _zonePositions = new Dictionary<string, Vector3>();
         private bool _zonesLogged;
         private bool _zonesStable;
-        private int _lastZoneScanCount = -1;
+        private float _nextZoneScan;
+        private float _zoneScanDeadline = -1f;
 
         // Ring rendering state.
         private readonly float[] _alpha = new float[4];
@@ -359,11 +365,14 @@ namespace TaskItemIndicator
         /// Rebuilds <see cref="_zonePositions"/> from every PlaceItemTrigger in the scene - the object
         /// dropped in for mark/place-beacon objectives, whose Id matches a condition's zoneId.
         ///
-        /// Some triggers (e.g. content-mod zones) spawn in a few seconds after the raid starts, so a
-        /// single scan right at raid start can miss them. FindObjectsOfType is a full scene scan though,
-        /// so re-running it for the whole raid would hitch on a big map. This rescans each quest-refresh
-        /// tick until the trigger count matches the previous scan - two ticks with no change means the
-        /// scene's settled - then stops for good.
+        /// Some triggers (e.g. content-mod zones) spawn in well after raid start - late enough that a
+        /// "stop once the trigger count holds for two ticks" check locks in before they exist and misses
+        /// them for the rest of the raid. FindObjectsOfType is a full scene scan though, so re-running it
+        /// every quest-refresh tick for the whole raid is what caused the freezing the old cap was added
+        /// for. This instead rescans on its own slower cadence (<see cref="ZoneRescanInterval"/>) until
+        /// every currently-wanted zone has been found, up to <see cref="ZoneScanTimeout"/> of raid time -
+        /// most wanted zones belong to quests on other maps and will never resolve here, so the timeout
+        /// is what actually bounds the cost most raids.
         /// </summary>
         private void RefreshZonePositions()
         {
@@ -372,19 +381,39 @@ namespace TaskItemIndicator
                 return;
             }
 
-            PlaceItemTrigger[] triggers = FindObjectsOfType<PlaceItemTrigger>();
-
-            if (triggers.Length == _lastZoneScanCount)
+            if (_zoneScanDeadline < 0f)
             {
-                _zonesStable = true;
+                _zoneScanDeadline = Time.time + ZoneScanTimeout;
             }
 
-            _lastZoneScanCount = triggers.Length;
+            if (Time.time < _nextZoneScan)
+            {
+                return;
+            }
+
+            _nextZoneScan = Time.time + ZoneRescanInterval;
+
+            PlaceItemTrigger[] triggers = FindObjectsOfType<PlaceItemTrigger>();
 
             _zonePositions.Clear();
             foreach (PlaceItemTrigger trigger in triggers)
             {
                 _zonePositions[trigger.Id] = trigger.transform.position;
+            }
+
+            bool stillMissingWantedZone = false;
+            foreach (string zoneId in _wantedZones)
+            {
+                if (!_zonePositions.ContainsKey(zoneId))
+                {
+                    stillMissingWantedZone = true;
+                    break;
+                }
+            }
+
+            if (!stillMissingWantedZone || Time.time >= _zoneScanDeadline)
+            {
+                _zonesStable = true;
             }
 
             if (_zonesStable && !_zonesLogged)
@@ -650,7 +679,8 @@ namespace TaskItemIndicator
             _zonePositions.Clear();
             _zonesLogged = false;
             _zonesStable = false;
-            _lastZoneScanCount = -1;
+            _nextZoneScan = 0f;
+            _zoneScanDeadline = -1f;
 
             for (int i = 0; i < 4; i++)
             {
