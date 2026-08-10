@@ -33,7 +33,6 @@ namespace TaskItemIndicator
         // all of these were config while tuning, then fixed at the values that felt right in raid.
         // 10m reached too far and 0.08 unlit was still muddy against a bright floor
         private const float TriggerDistance = 5f;
-        private const float MaxOpacity = 1f;
         private const float UnlitLevel = 0.04f;
         private const float DirectionSharpness = 1.5f;
         private const float FadeInFraction = 0.35f;
@@ -42,18 +41,24 @@ namespace TaskItemIndicator
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _scanInterval;
         private ConfigEntry<float> _ringScale;
+        private ConfigEntry<float> _ringThickness;
+        private ConfigEntry<float> _ringOpacity;
+        private ConfigEntry<Color> _ringColor;
         private ConfigEntry<float> _convergeDistance;
 
         private readonly HashSet<string> _wanted = new HashSet<string>();
         private readonly HashSet<string> _wantedZones = new HashSet<string>();
         private readonly Dictionary<string, Vector3> _zonePositions = new Dictionary<string, Vector3>();
         private bool _zonesLogged;
+        private bool _zonesStable;
+        private int _lastZoneScanCount = -1;
         private readonly float[] _alpha = new float[4];
         private Image[] _arcs;
         private Canvas _canvas;
         private ActionPanel _actionPanel;
         private int _builtForHeight;
         private float _builtForScale;
+        private float _builtForThickness;
 
         private float _nextScan;
         private float _nextQuestRefresh;
@@ -78,6 +83,28 @@ namespace TaskItemIndicator
                 new ConfigDescription(
                     "Size multiplier. 1.0 matches live, which is small - about 14px across at 720p",
                     new AcceptableValueRange<float>(0.5f, 4f)));
+
+            _ringThickness = Config.Bind(
+                "2. Indicator",
+                "Ring Thickness",
+                3f / 7f,
+                new ConfigDescription(
+                    "Band width as a fraction of the ring's radius. Higher is thicker; 1.0 is a solid filled disc",
+                    new AcceptableValueRange<float>(0.1f, 1f)));
+
+            _ringOpacity = Config.Bind(
+                "2. Indicator",
+                "Ring Opacity",
+                1f,
+                new ConfigDescription(
+                    "Maximum opacity the ring reaches when fully lit",
+                    new AcceptableValueRange<float>(0.1f, 1f)));
+
+            _ringColor = Config.Bind(
+                "2. Indicator",
+                "Ring Color",
+                Color.white,
+                "Tint applied to the ring");
 
             _convergeDistance = Config.Bind(
                 "2. Indicator",
@@ -283,20 +310,37 @@ namespace TaskItemIndicator
         /// log shows that scan firing before HostGameController even reports the raid started, and
         /// before content mods like WTT's zone data (fetched via /wttcommonlib/zones/get) finish
         /// spawning their own PlaceItemTriggers. A zone caught mid-spawn just silently never gets
-        /// found. So this now rebuilds every quest-refresh tick (same 2s cadence as RefreshWanted)
-        /// instead - cheap for a few dozen static objects, and self-heals once the scene settles.
+        /// found.
+        ///
+        /// FindObjectsOfType is a full scene scan, so re-running it every 2s for the whole raid (as a
+        /// first fix did) hitches on a big map like Woods. It's only actually needed for the handful of
+        /// ticks it takes late-spawning zones to appear, so this keeps rescanning until the trigger
+        /// count matches the previous scan - two ticks in a row with no change means the scene's
+        /// settled - then stops for good.
         /// </summary>
         private void RefreshZonePositions()
         {
-            _zonePositions.Clear();
+            if (_zonesStable)
+            {
+                return;
+            }
 
             PlaceItemTrigger[] triggers = FindObjectsOfType<PlaceItemTrigger>();
+
+            if (triggers.Length == _lastZoneScanCount)
+            {
+                _zonesStable = true;
+            }
+
+            _lastZoneScanCount = triggers.Length;
+
+            _zonePositions.Clear();
             foreach (PlaceItemTrigger trigger in triggers)
             {
                 _zonePositions[trigger.Id] = trigger.transform.position;
             }
 
-            if (!_zonesLogged)
+            if (_zonesStable && !_zonesLogged)
             {
                 _zonesLogged = true;
                 Logger.LogInfo("Task Item Indicator: found " + triggers.Length + " PlaceItemTrigger zone(s) - "
@@ -332,18 +376,19 @@ namespace TaskItemIndicator
                 targetDistance: _targetDistance,
                 triggerDistance: TriggerDistance,
                 convergeDistance: _convergeDistance.Value,
-                maxOpacity: MaxOpacity,
+                maxOpacity: _ringOpacity.Value,
                 unlitLevel: UnlitLevel,
                 directionSharpness: DirectionSharpness,
                 fadeInFraction: FadeInFraction);
 
+            Color tint = _ringColor.Value;
             float step = Time.deltaTime * FadeSpeed;
             for (int i = 0; i < 4; i++)
             {
                 _alpha[i] = Mathf.Lerp(_alpha[i], target[i], step);
                 if (_arcs != null && _arcs[i] != null)
                 {
-                    _arcs[i].color = new Color(1f, 1f, 1f, _alpha[i]);
+                    _arcs[i].color = new Color(tint.r, tint.g, tint.b, _alpha[i]);
                 }
             }
         }
@@ -400,7 +445,8 @@ namespace TaskItemIndicator
         private void EnsureRing()
         {
             bool sizeChanged = _builtForHeight != Screen.height
-                               || !Mathf.Approximately(_builtForScale, _ringScale.Value);
+                               || !Mathf.Approximately(_builtForScale, _ringScale.Value)
+                               || !Mathf.Approximately(_builtForThickness, _ringThickness.Value);
 
             if (_canvas != null && _arcs != null && !sizeChanged)
             {
@@ -414,10 +460,16 @@ namespace TaskItemIndicator
 
             _builtForHeight = Screen.height;
             _builtForScale = _ringScale.Value;
+            _builtForThickness = _ringThickness.Value;
 
             int outer = Mathf.Max(3, Mathf.RoundToInt(
                 RingGeometry.ReferenceOuterRadius * (Screen.height / RingGeometry.ReferenceScreenHeight) * _ringScale.Value));
             int size = outer * 2;
+
+            // "thickness" is the band width as a fraction of the outer radius (bigger = thicker), which
+            // reads more intuitively as a slider than the inner/outer radius ratio BuildArcTexture
+            // actually needs - so it's inverted here rather than exposing InnerRadiusFraction directly
+            float innerRadiusFraction = Mathf.Clamp01(1f - _builtForThickness);
 
             GameObject root = new GameObject("TaskItemIndicator");
             root.transform.SetParent(null);
@@ -425,10 +477,11 @@ namespace TaskItemIndicator
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 50;
 
+            Color tint = _ringColor.Value;
             _arcs = new Image[4];
             for (int i = 0; i < 4; i++)
             {
-                Texture2D texture = BuildArcTexture(outer, RingGeometry.SegmentCentres[i]);
+                Texture2D texture = BuildArcTexture(outer, innerRadiusFraction, RingGeometry.SegmentCentres[i]);
                 Sprite sprite = Sprite.Create(
                     texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
 
@@ -438,7 +491,7 @@ namespace TaskItemIndicator
                 Image image = go.AddComponent<Image>();
                 image.sprite = sprite;
                 image.raycastTarget = false;
-                image.color = new Color(1f, 1f, 1f, _alpha[i]);
+                image.color = new Color(tint.r, tint.g, tint.b, _alpha[i]);
 
                 RectTransform rect = image.rectTransform;
                 rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
@@ -450,13 +503,13 @@ namespace TaskItemIndicator
         }
 
         /// <summary>One arc of the ring, supersampled, with the mid-bright / ends-dimmer taper live has.</summary>
-        private static Texture2D BuildArcTexture(int outerRadius, float centreDegrees)
+        private static Texture2D BuildArcTexture(int outerRadius, float innerRadiusFraction, float centreDegrees)
         {
             int size = outerRadius * 2;
             int hi = size * RingGeometry.Supersample;
             float centre = hi / 2f - 0.5f;
             float ro = outerRadius * RingGeometry.Supersample;
-            float ri = outerRadius * RingGeometry.InnerRadiusFraction * RingGeometry.Supersample;
+            float ri = outerRadius * innerRadiusFraction * RingGeometry.Supersample;
 
             float[] coverage = new float[size * size];
 
@@ -539,6 +592,8 @@ namespace TaskItemIndicator
             _wantedZones.Clear();
             _zonePositions.Clear();
             _zonesLogged = false;
+            _zonesStable = false;
+            _lastZoneScanCount = -1;
 
             for (int i = 0; i < 4; i++)
             {
