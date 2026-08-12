@@ -25,7 +25,7 @@ namespace TaskItemIndicator
     /// class stays responsible for everything Shared can't do standalone: reading the game state,
     /// BepInEx config, and driving the actual Canvas/Texture2D.
     /// </summary>
-    [BepInPlugin("com.thecrimsonfuckr.taskitemindicator", "Task Item Indicator", "1.1.0")]
+    [BepInPlugin("com.thecrimsonfuckr.taskitemindicator", "Task Item Indicator", "1.0.0")]
     public class TaskItemIndicatorPlugin : BaseUnityPlugin
     {
         // quests can complete mid raid, so the wanted set can't be built once at raid start
