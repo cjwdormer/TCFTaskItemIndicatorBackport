@@ -3,7 +3,7 @@
 Live Tarkov got a thing in 1.0.5.0 where a small segmented ring shows up in the middle of your screen when you're near a task item you still need, and the part of the ring facing the item lights up. SPT's client is older than that patch so it never shows up. This puts it back.
 
 
-## What it actually does
+## How it works
 
 Get within range of a task item you still need and a faint ring fades in at the centre of your screen. The arcs facing the item light up brighter, so an item behind you lights the bottom of the ring and you know to turn around. Walk toward it while looking at it and the whole ring goes bright as you arrive.
 
@@ -13,7 +13,7 @@ Turn away while you're standing near it and the direction comes straight back, b
 
 ## Where the ring came from
 
-Nothing here is ripped. Live is IL2CPP with encrypted metadata, so its code can't be read, and its art wasn't needed anyway - the ring is generated procedurally at startup from measurements taken off BSG's own reveal footage:
+The ring is generated procedurally at startup from measurements taken off BSG's own reveal footage:
 
 - four arcs, roughly 70 degrees each, centred on the diagonals
 - gaps of about 20 degrees on the cardinals, which is why "behind you" lights two arcs rather than one
@@ -28,7 +28,7 @@ Which task items count is the game's own test, lifted from `GameWorld.ManageQues
 
 ## Settings
 
-F12 in game. Everything takes effect immediately, no restart.
+F12 in game.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -40,8 +40,6 @@ F12 in game. Everything takes effect immediately, no restart.
 | Converge Distance | 1.5 m | how close before the whole ring lights up instead of pointing. you have to be looking at it too |
 | Scan Interval | 0.25 s | how often it looks for items. direction still updates every frame |
 
-Everything else - detection range, opacity, how dim the unlit arcs go, how tight the lit arc is, fade timing - got tuned in raid and then baked in. No point making you tune what already looks right.
-
 Distances are measured from your eyes, not your feet, so an item on a shelf and one on the floor read the same.
 
 ## Structure
@@ -51,15 +49,12 @@ src/
   TaskItemIndicator/            BepInEx plugin - game state, config, Canvas/Texture2D
     TaskItemIndicator.cs
     TaskItemIndicator.csproj
-  TaskItemIndicator.Shared/     pure ring math, no Unity/BepInEx dependency
+  TaskItemIndicator.Shared/     Ring math
     RingGeometry.cs
     TaskItemIndicator.Shared.csproj
-Tests/
-  TaskItemIndicator.Shared.Tests/   xUnit tests against RingGeometry
-build/                          build/deploy tooling - see BUILD.md
 ```
 
-Client-only BepInEx plugin, no server side. Built for SPT 4.0.13. See `BUILD.md` for the full
+Client-only BepInEx plugin. Built for SPT 4.0.13. See `BUILD.md` for the full
 setup/build/test guide.
 
 ## Install
