@@ -68,4 +68,4 @@ Extract the archive and drop the `BepInEx` folder into your SPT root. Needs SPT 
 
 ## Credits
 
-Original mod by Vultify - the ring measurements, the Shared/plugin split, and the whole v1.0.0 feature set are their work. Maintained by TheCrimsonFuckr since.
+Original mod by Vultify - the initial ring measurements, the Shared/plugin split, and the whole idea of this feature were their work.
